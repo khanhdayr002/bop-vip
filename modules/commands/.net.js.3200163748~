@@ -1,0 +1,142 @@
+var axios = require('axios');
+var fs = require('fs-extra');
+var cheerio = require('cheerio');
+var http 
+var name = 'net';
+
+function searchOnWeb(key) {
+  var cb;
+  var rt = new Promise(function (resolve, reject) {
+    cb = function (error, data) {
+      data ? resolve(data) : reject(error);
+    }
+  });
+
+  axios({
+    method: 'GET',
+    url: 'https://www.nettruyenmax.com/Comic/Services/SuggestSearch.ashx?q=' + encodeURIComponent(key),
+    headers: {
+      Connection: 'keep-alive',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
+    }
+  })
+    .then(Obj => Obj.data)
+    .then(function (html) {
+      var Arr = [];
+      var html = html.split(/<(\/|)(ul|li)>/g).filter(v => v.length > 0);
+      for (let value of html) {
+        var $ = cheerio.load(value);
+        Arr.push({
+          name: $('h3').text(),
+          image: 'https:' + $('img').attr('src'),
+          baseURL: $('a').attr('hrerf')
+        });
+      }
+      cb(null, Arr);
+    })
+    .catch(function (err) {
+      cb(err);
+    });
+
+  return rt;
+}
+
+function getStream(url) {
+  var cb;
+  var rtPromise = new Promise(function (resolve, reject) {
+    cb = function (error, stream) {
+      if (error) reject(error);
+      resolve(stream);
+    }
+  });
+
+  axios({
+    method: 'GET',
+    url,
+    responseType: 'arraybuffer'
+  })
+    .then(function ({ headers, data }) {
+      var ext = headers['content-type']
+        .split('/')
+        .pop();
+      var path = __dirname + `/${Date.now()}.${ext}`;
+      fs.writeFileSync(path, Buffer.from(data, 'utf-8'));
+      return path;
+    })
+    .then(function (path) {
+      cb(null, fs.createReadStream(path));
+    })
+    .catch(function (err) {
+      cb(err);
+    });
+  
+  return rtPromise;
+}
+
+class Sam {
+  get config() {
+    return {
+      name,
+      version: '1.0.0',
+      hasPermssion: 0,
+      credits: 'Sam',
+      description: 'Read Stories Online',
+      commandCategory: 'Media',
+      usages: '[name]',
+      cooldowns: 5
+    }
+  }
+
+  async run({ api, event, args }) {
+    var { threadID, messageID, senderID } = event;
+    var alert = (txt, callback = () => {}) => api.sendMessage(txt, threadID, callback, messageID);
+    if (args.length < 1) {
+      return alert(`Vui Lòng Nhập Từ Khóa Tìm Kiếm !!\nHoặc Dùng 'help' Để Xem Thêm !!`, threadID, messageID);
+    }
+    try {
+      switch (args[0].toLowerCase()) {
+        case 'help':
+        case '-h':
+          break;
+        default:
+          var data = await searchOnWeb(args.join(' '));
+          var msg = {
+            body: '',
+            attachment: []
+          }
+          return console.log(data);
+          alert(msg, function (err, info) {
+            if (err) {
+              console.log(err);
+              return alert('Đã Xảy Ra Lỗi Trong Lúc Gửi Tin Nhắn !!');
+            }
+            global
+              .client
+              .handleReply
+              .push({
+                name,
+                type: 'ReplyToRead',
+                author: senderID,
+                messageID: info.messageID,
+                resData: data
+              });
+          });
+          break;
+      }
+    } catch (e) {
+      console.log(e);
+      alert('Đã Xảy Ra Lỗi Trong Lúc Thực Thi !!\nVui Lòng Kiểm Tra Console !!');
+    }
+    return;
+  }
+
+  async handleReply({ api, event, handleReply }) {
+    
+  }
+
+  async handleReaction({ api, event, handleReply }) {
+    
+  }
+}
+
+module.exports = new Sam();
